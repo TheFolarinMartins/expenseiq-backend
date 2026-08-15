@@ -152,6 +152,7 @@ import type { ApiErrorBody } from './types';
 
 const API_URL = import.meta.env.VITE_API_URL as string;
 const TOKEN_KEY = 'expenseiq_access_token';
+const REFRESH_TOKEN_KEY = 'expenseiq_refresh_token';
 
 export class ApiError extends Error {
   constructor(
@@ -166,8 +167,15 @@ export class ApiError extends Error {
 
 export const tokenStore = {
   get: () => sessionStorage.getItem(TOKEN_KEY),
-  set: (token: string) => sessionStorage.setItem(TOKEN_KEY, token),
-  clear: () => sessionStorage.removeItem(TOKEN_KEY),
+  getRefresh: () => sessionStorage.getItem(REFRESH_TOKEN_KEY),
+  setPair: (token: string, refreshToken: string) => {
+    sessionStorage.setItem(TOKEN_KEY, token);
+    sessionStorage.setItem(REFRESH_TOKEN_KEY, refreshToken);
+  },
+  clear: () => {
+    sessionStorage.removeItem(TOKEN_KEY);
+    sessionStorage.removeItem(REFRESH_TOKEN_KEY);
+  },
 };
 
 export async function apiRequest<T>(path: string, options: RequestInit = {}): Promise<T> {
@@ -193,7 +201,6 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
     const body = payload as ApiErrorBody | null;
-    if (response.status === 401) tokenStore.clear();
     throw new ApiError(
       response.status,
       body?.error.code ?? 'HTTP_ERROR',
@@ -225,7 +232,7 @@ import { apiRequest, tokenStore } from './client';
 import type { User } from './types';
 
 interface AuthResponse {
-  data: { user: User; token: string };
+  data: { user: User; token: string; refreshToken: string };
 }
 
 export async function register(input: {
@@ -237,7 +244,7 @@ export async function register(input: {
     method: 'POST',
     body: JSON.stringify(input),
   });
-  tokenStore.set(result.data.token);
+  tokenStore.setPair(result.data.token, result.data.refreshToken);
   return result.data.user;
 }
 
@@ -246,7 +253,7 @@ export async function login(email: string, password: string): Promise<User> {
     method: 'POST',
     body: JSON.stringify({ email, password }),
   });
-  tokenStore.set(result.data.token);
+  tokenStore.setPair(result.data.token, result.data.refreshToken);
   return result.data.user;
 }
 
@@ -254,14 +261,31 @@ export async function getCurrentUser(): Promise<User> {
   return (await apiRequest<{ data: User }>('/api/auth/me')).data;
 }
 
+export async function refreshSession(): Promise<User> {
+  const refreshToken = tokenStore.getRefresh();
+  if (!refreshToken) throw new Error('No refresh token is available.');
+  const result = await apiRequest<AuthResponse>('/api/auth/refresh', {
+    method: 'POST',
+    body: JSON.stringify({ refreshToken }),
+  });
+  tokenStore.setPair(result.data.token, result.data.refreshToken);
+  return result.data.user;
+}
+
 export async function logout(): Promise<void> {
+  const refreshToken = tokenStore.getRefresh();
   try {
-    await apiRequest<void>('/api/auth/logout', { method: 'POST' });
+    await apiRequest<void>('/api/auth/logout', {
+      method: 'POST',
+      body: JSON.stringify({ refreshToken: refreshToken ?? undefined }),
+    });
   } finally {
     tokenStore.clear();
   }
 }
 ```
+
+When a protected request returns 401, call `refreshSession()` once and retry the original request once. Use one shared in-flight refresh promise so simultaneous 401 responses cannot reuse the same rotating token. Never refresh or retry `/api/auth/refresh` itself. If refresh fails, clear both tokens and redirect to login.
 
 Application startup flow:
 
@@ -269,9 +293,9 @@ Application startup flow:
 2. If there is a token, call `getCurrentUser()`.
 3. If it succeeds, populate the auth store and show protected routes.
 4. If it returns 401, clear auth state and redirect to login.
-5. When an authenticated request returns 401, show “Your session expired” and redirect to login.
+5. On 401, attempt one refresh and retry; if it fails, show “Your session expired” and redirect to login.
 
-Logout currently invalidates the session on the client; the server does not maintain a token blacklist.
+Logout revokes the submitted refresh token and clears both client tokens. The already-issued access token remains valid only until its short expiry.
 
 ## 6. Statement APIs
 
@@ -426,6 +450,7 @@ Load categories once after authentication and cache them in application state. D
 | GET    | `/health/ready`                 | No             | Database/service readiness        |
 | POST   | `/api/auth/register`            | No             | Create account and store token    |
 | POST   | `/api/auth/login`               | No             | Sign in and store token           |
+| POST   | `/api/auth/refresh`             | No             | Rotate tokens and renew session   |
 | GET    | `/api/auth/me`                  | Bearer         | Restore authenticated session     |
 | POST   | `/api/auth/logout`              | Bearer         | End the client session            |
 | POST   | `/api/statements/upload`        | Bearer         | Upload one or more PDFs           |
@@ -530,8 +555,8 @@ Invalidate statements after upload, reprocess, or delete. Invalidate transaction
 
 ## 14. Current backend limitations
 
-- JWT refresh tokens are not implemented; users must log in again after token expiry.
-- Logout is client-side token removal, not server-side token revocation.
+- Refresh tokens are opaque, rotate after every use, and expire after 30 days by default. The frontend must prevent concurrent refresh calls from reusing one token.
+- Logout revokes the current refresh token; an issued access JWT remains valid until its short expiry.
 - Uploaded PDFs are validated, deduplicated, stored, and assigned a bank. Reliable bank-specific transaction extraction still requires anonymized text-PDF fixtures and parser implementation.
 - Dashboard trend and bank aggregation arrays may currently be empty.
 

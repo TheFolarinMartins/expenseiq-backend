@@ -1,4 +1,4 @@
-import { createHash, randomUUID } from 'node:crypto';
+import { createHash, randomBytes, randomUUID } from 'node:crypto';
 import { compare, hash } from 'bcryptjs';
 import { Router } from 'express';
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
@@ -6,7 +6,7 @@ import jwt from 'jsonwebtoken';
 import multer from 'multer';
 import { z } from 'zod';
 import type { AppConfig } from './config/env.js';
-import type { StatementRecord } from './domain/types.js';
+import type { RefreshTokenRecord, StatementRecord, UserRecord } from './domain/types.js';
 import type { DataStore, FileStore } from './infrastructure/store.js';
 import { authenticate } from './middleware/authenticate.js';
 import { AppError } from './shared/errors.js';
@@ -72,6 +72,39 @@ function parse<T>(schema: z.ZodType<T>, input: unknown): T {
   return result.data;
 }
 
+const refreshTokenHash = (token: string): string =>
+  createHash('sha256').update(token).digest('hex');
+
+function accessToken(user: UserRecord, config: AppConfig): string {
+  return jwt.sign({ role: user.role }, config.JWT_SECRET, {
+    subject: user.id,
+    expiresIn: config.JWT_EXPIRES_IN as NonNullable<jwt.SignOptions['expiresIn']>,
+  });
+}
+
+function newRefreshToken(
+  userId: string,
+  expiresDays: number,
+): {
+  raw: string;
+  record: RefreshTokenRecord;
+} {
+  const raw = randomBytes(48).toString('base64url');
+  const now = new Date();
+  return {
+    raw,
+    record: {
+      id: randomUUID(),
+      userId,
+      tokenHash: refreshTokenHash(raw),
+      expiresAt: new Date(now.getTime() + expiresDays * 86_400_000).toISOString(),
+      createdAt: now.toISOString(),
+      revokedAt: null,
+      replacedById: null,
+    },
+  };
+}
+
 export interface RouteDependencies {
   config: AppConfig;
   store: DataStore;
@@ -95,11 +128,12 @@ export function createRoutes({ config, store, files }: RouteDependencies): Route
       );
       const email = body.email.toLowerCase();
       const passwordHash = await hash(body.password, 12);
+      const refresh = newRefreshToken(randomUUID(), config.REFRESH_TOKEN_EXPIRES_DAYS);
       const user = await store.write((state) => {
         if (state.users.some((item) => item.email === email))
           throw new AppError(409, 'CONFLICT', 'An account with this email already exists.');
         const created = {
-          id: randomUUID(),
+          id: refresh.record.userId,
           name: body.name,
           email,
           passwordHash,
@@ -107,13 +141,12 @@ export function createRoutes({ config, store, files }: RouteDependencies): Route
           createdAt: new Date().toISOString(),
         };
         state.users.push(created);
+        state.refreshTokens.push(refresh.record);
         return created;
       });
-      const token = jwt.sign({ role: user.role }, config.JWT_SECRET, {
-        subject: user.id,
-        expiresIn: '15m',
+      response.status(201).json({
+        data: { user: userDto(user), token: accessToken(user, config), refreshToken: refresh.raw },
       });
-      response.status(201).json({ data: { user: userDto(user), token } });
     }),
   );
   router.post(
@@ -128,11 +161,56 @@ export function createRoutes({ config, store, files }: RouteDependencies): Route
       );
       if (!user || !(await compare(body.password, user.passwordHash)))
         throw new AppError(401, 'INVALID_CREDENTIALS', 'Email or password is incorrect.');
-      const token = jwt.sign({ role: user.role }, config.JWT_SECRET, {
-        subject: user.id,
-        expiresIn: '15m',
+      const refresh = newRefreshToken(user.id, config.REFRESH_TOKEN_EXPIRES_DAYS);
+      await store.write((state) => {
+        const now = new Date().toISOString();
+        state.refreshTokens = state.refreshTokens.filter(
+          (item) => item.expiresAt > now || item.revokedAt === null,
+        );
+        state.refreshTokens.push(refresh.record);
       });
-      response.json({ data: { user: userDto(user), token } });
+      response.json({
+        data: { user: userDto(user), token: accessToken(user, config), refreshToken: refresh.raw },
+      });
+    }),
+  );
+  router.post(
+    '/auth/refresh',
+    asyncRoute(async (request, response) => {
+      const body = parse(
+        z.object({ refreshToken: z.string().min(32).max(500) }).strict(),
+        request.body,
+      );
+      const presentedHash = refreshTokenHash(body.refreshToken);
+      const rotated = await store.write((state) => {
+        const now = new Date().toISOString();
+        const current = state.refreshTokens.find((item) => item.tokenHash === presentedHash);
+        if (!current || current.revokedAt || current.expiresAt <= now)
+          throw new AppError(
+            401,
+            'INVALID_REFRESH_TOKEN',
+            'The refresh token is invalid or expired.',
+          );
+        const user = state.users.find((item) => item.id === current.userId);
+        if (!user)
+          throw new AppError(
+            401,
+            'INVALID_REFRESH_TOKEN',
+            'The refresh token is invalid or expired.',
+          );
+        const next = newRefreshToken(user.id, config.REFRESH_TOKEN_EXPIRES_DAYS);
+        current.revokedAt = now;
+        current.replacedById = next.record.id;
+        state.refreshTokens.push(next.record);
+        return { user, refreshToken: next.raw };
+      });
+      response.json({
+        data: {
+          user: userDto(rotated.user),
+          token: accessToken(rotated.user, config),
+          refreshToken: rotated.refreshToken,
+        },
+      });
     }),
   );
   router.get('/auth/me', protectedRoute, (request, response) => {
@@ -142,7 +220,27 @@ export function createRoutes({ config, store, files }: RouteDependencies): Route
     if (!user) throw new AppError(404, 'NOT_FOUND', 'The requested resource was not found.');
     response.json({ data: userDto(user) });
   });
-  router.post('/auth/logout', protectedRoute, (_request, response) => response.status(204).send());
+  router.post(
+    '/auth/logout',
+    protectedRoute,
+    asyncRoute(async (request, response) => {
+      const body = parse(
+        z.object({ refreshToken: z.string().min(32).max(500).optional() }).strict(),
+        request.body ?? {},
+      );
+      if (body.refreshToken) {
+        const userId = ownedUserId(request);
+        const tokenHash = refreshTokenHash(body.refreshToken);
+        await store.write((state) => {
+          const token = state.refreshTokens.find(
+            (item) => item.userId === userId && item.tokenHash === tokenHash,
+          );
+          if (token && !token.revokedAt) token.revokedAt = new Date().toISOString();
+        });
+      }
+      response.status(204).send();
+    }),
+  );
 
   const upload = multer({
     storage: multer.memoryStorage(),

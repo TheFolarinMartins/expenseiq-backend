@@ -27,6 +27,7 @@ const emptyState = (): DatabaseState => ({
     name: code.replaceAll('_', ' ').replace(/\b\w/g, (x) => x.toUpperCase()),
     displayOrder,
   })),
+  refreshTokens: [],
 });
 export class JsonStore implements DataStore {
   private state: DatabaseState = emptyState();
@@ -36,7 +37,8 @@ export class JsonStore implements DataStore {
     const absolute = resolve(this.path);
     await mkdir(dirname(absolute), { recursive: true });
     try {
-      this.state = JSON.parse(await readFile(absolute, 'utf8')) as DatabaseState;
+      const stored = JSON.parse(await readFile(absolute, 'utf8')) as DatabaseState;
+      this.state = { ...emptyState(), ...stored, refreshTokens: stored.refreshTokens ?? [] };
     } catch (error) {
       if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error;
       await this.persist();
@@ -47,13 +49,14 @@ export class JsonStore implements DataStore {
   }
   async write<T>(writer: (state: DatabaseState) => T): Promise<T> {
     let result!: T;
-    this.queue = this.queue.then(async () => {
+    const operation = this.queue.then(async () => {
       const next = structuredClone(this.state);
       result = writer(next);
       this.state = next;
       await this.persist();
     });
-    await this.queue;
+    this.queue = operation.catch(() => undefined);
+    await operation;
     return result;
   }
   private async persist(): Promise<void> {

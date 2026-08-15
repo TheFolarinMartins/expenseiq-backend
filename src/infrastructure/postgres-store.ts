@@ -28,6 +28,13 @@ const initialState = (): DatabaseState => ({
     name: code.replaceAll('_', ' ').replace(/\b\w/g, (letter) => letter.toUpperCase()),
     displayOrder,
   })),
+  refreshTokens: [],
+});
+
+const normalizeState = (state: DatabaseState): DatabaseState => ({
+  ...initialState(),
+  ...state,
+  refreshTokens: state.refreshTokens ?? [],
 });
 
 /** Durable PostgreSQL-backed state store. Writes are serialized with a row lock. */
@@ -60,7 +67,7 @@ export class PostgresStore implements DataStore {
     const result = await this.pool.query<{ data: DatabaseState }>(
       'select data from expenseiq_app_state where id = 1',
     );
-    this.state = result.rows[0]?.data ?? initialState();
+    this.state = normalizeState(result.rows[0]?.data ?? initialState());
   }
 
   read<T>(reader: (state: DatabaseState) => T): T {
@@ -69,14 +76,14 @@ export class PostgresStore implements DataStore {
 
   async write<T>(writer: (state: DatabaseState) => T): Promise<T> {
     let result!: T;
-    this.queue = this.queue.then(async () => {
+    const operation = this.queue.then(async () => {
       const client = await this.pool.connect();
       try {
         await client.query('begin');
         const current = await client.query<{ data: DatabaseState }>(
           'select data from expenseiq_app_state where id = 1 for update',
         );
-        const next = structuredClone(current.rows[0]?.data ?? initialState());
+        const next = structuredClone(normalizeState(current.rows[0]?.data ?? initialState()));
         result = writer(next);
         await client.query(
           'update expenseiq_app_state set data = $1::jsonb, updated_at = now() where id = 1',
@@ -91,7 +98,8 @@ export class PostgresStore implements DataStore {
         client.release();
       }
     });
-    await this.queue;
+    this.queue = operation.catch(() => undefined);
+    await operation;
     return result;
   }
 

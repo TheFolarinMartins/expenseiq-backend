@@ -60,10 +60,20 @@ export interface CategoryRecord {
   name: string;
   displayOrder: number;
 }
+export interface RefreshTokenRecord {
+  id: string;
+  userId: string;
+  tokenHash: string;
+  expiresAt: string;
+  createdAt: string;
+  revokedAt: string | null;
+  replacedById: string | null;
+}
 export interface DatabaseState {
   users: UserRecord[];
   statements: StatementRecord[];
   transactions: TransactionRecord[];
   corrections: CorrectionRecord[];
   categories: CategoryRecord[];
+  refreshTokens: RefreshTokenRecord[];
 }

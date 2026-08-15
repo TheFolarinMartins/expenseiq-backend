@@ -52,7 +52,15 @@ export const openApiDocument = {
         properties: {
           data: {
             type: 'object',
-            properties: { user: { $ref: '#/components/schemas/User' }, token: { type: 'string' } },
+            required: ['user', 'token', 'refreshToken'],
+            properties: {
+              user: { $ref: '#/components/schemas/User' },
+              token: { type: 'string', description: 'Short-lived bearer access token' },
+              refreshToken: {
+                type: 'string',
+                description: 'Opaque rotating token; replace it after every refresh',
+              },
+            },
           },
         },
       },
@@ -174,11 +182,49 @@ export const openApiDocument = {
         },
       },
     },
+    '/api/auth/refresh': {
+      post: {
+        tags: ['Authentication'],
+        summary: 'Rotate a refresh token and issue a new access token',
+        requestBody: {
+          required: true,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                required: ['refreshToken'],
+                properties: { refreshToken: { type: 'string', minLength: 32 } },
+              },
+            },
+          },
+        },
+        responses: {
+          '200': {
+            description: 'Tokens rotated',
+            content: {
+              'application/json': { schema: { $ref: '#/components/schemas/AuthResponse' } },
+            },
+          },
+          '401': { description: 'Refresh token is invalid, expired, revoked, or already used' },
+        },
+      },
+    },
     '/api/auth/logout': {
       post: {
         tags: ['Authentication'],
         summary: 'Logout client session',
         security: [{ bearerAuth: [] }],
+        requestBody: {
+          required: false,
+          content: {
+            'application/json': {
+              schema: {
+                type: 'object',
+                properties: { refreshToken: { type: 'string' } },
+              },
+            },
+          },
+        },
         responses: { '204': { description: 'Logged out' } },
       },
     },

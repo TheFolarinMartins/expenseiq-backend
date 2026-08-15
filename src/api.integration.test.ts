@@ -45,6 +45,39 @@ describe('ExpenseIQ API', () => {
       ).status,
     ).toBe(200);
   });
+  it('rotates refresh tokens once and revokes the rotated token on logout', async () => {
+    const registered = await request(app)
+      .post('/api/auth/register')
+      .send({ name: 'Refresh User', email: 'refresh@example.com', password: 'strong-password' });
+    const firstRefreshToken = registered.body.data.refreshToken as string;
+    expect(firstRefreshToken).toBeTruthy();
+
+    const refreshed = await request(app)
+      .post('/api/auth/refresh')
+      .send({ refreshToken: firstRefreshToken });
+    expect(refreshed.status).toBe(200);
+    expect(refreshed.body.data.token).toBeTruthy();
+    expect(refreshed.body.data.refreshToken).not.toBe(firstRefreshToken);
+
+    expect(
+      (await request(app).post('/api/auth/refresh').send({ refreshToken: firstRefreshToken }))
+        .status,
+    ).toBe(401);
+
+    const secondRefreshToken = refreshed.body.data.refreshToken as string;
+    expect(
+      (
+        await request(app)
+          .post('/api/auth/logout')
+          .set('authorization', `Bearer ${refreshed.body.data.token as string}`)
+          .send({ refreshToken: secondRefreshToken })
+      ).status,
+    ).toBe(204);
+    expect(
+      (await request(app).post('/api/auth/refresh').send({ refreshToken: secondRefreshToken }))
+        .status,
+    ).toBe(401);
+  });
   it('requires authentication', async () => {
     expect((await request(app).get('/api/statements')).status).toBe(401);
   });

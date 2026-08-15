@@ -11,6 +11,7 @@ const envSchema = z
     DATA_FILE: z.string().min(1).default('./storage/data.json'),
     JWT_SECRET: z.string().min(32).default(placeholderSecret),
     JWT_EXPIRES_IN: z.string().min(1).default('15m'),
+    REFRESH_TOKEN_EXPIRES_DAYS: z.coerce.number().int().min(1).max(365).default(30),
     CORS_ORIGIN: z.string().url().default('http://localhost:5173'),
     LOG_LEVEL: z
       .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
