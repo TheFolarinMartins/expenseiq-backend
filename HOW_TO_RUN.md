@@ -91,6 +91,8 @@ The backend currently includes the verified application foundation:
 
 ## Persistence
 
+For Render production deployments backed by Supabase, `DATABASE_URL` must use the IPv4-compatible **Shared Pooler, Session mode** connection string (`*.pooler.supabase.com:5432`), not the IPv6-only direct project hostname.
+
 The running backend creates:
 
 - `storage/data.json` for users, statements, transactions, corrections, and categories;
