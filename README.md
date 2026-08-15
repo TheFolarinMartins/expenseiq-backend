@@ -8,6 +8,8 @@ See [HOW_TO_RUN.md](HOW_TO_RUN.md).
 
 For persistent hosting, see [DEPLOYMENT.md](DEPLOYMENT.md).
 
+Frontend developers should follow [FRONTEND_INTEGRATION.md](FRONTEND_INTEGRATION.md).
+
 ```powershell
 Copy-Item .env.example .env
 pnpm.cmd install

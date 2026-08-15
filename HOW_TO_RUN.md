@@ -1,4 +1,4 @@
-x# How to Run the ExpenseIQ Backend
+# How to Run the ExpenseIQ Backend
 
 The backend is a standalone Node.js application. All commands below run inside the `backend` folder.
 
@@ -9,7 +9,7 @@ The backend is a standalone Node.js application. All commands below run inside t
 
 ## Install and configure
 
-From the repository root:3
+From the repository root:
 
 ```powershell
 Set-Location backend
