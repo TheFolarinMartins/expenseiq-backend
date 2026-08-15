@@ -12,22 +12,24 @@ import { JsonStore } from './infrastructure/json-store.js';
 import { LocalFileStore } from './infrastructure/file-store.js';
 import { createRoutes } from './routes.js';
 import { openApiDocument } from './openapi.js';
+import type { DataStore, FileStore } from './infrastructure/store.js';
 
 export interface AppDependencies {
   config: AppConfig;
   logger: Logger;
   readiness?: () => Promise<boolean>;
-  store?: JsonStore;
-  files?: LocalFileStore;
+  store?: DataStore;
+  files?: FileStore;
 }
 
 export function createApp({
   config,
   logger,
-  readiness = () => Promise.resolve(true),
+  readiness,
   store = new JsonStore(config.DATA_FILE),
   files = new LocalFileStore(config.STATEMENT_STORAGE_DIR),
 }: AppDependencies): Express {
+  const readinessCheck = readiness ?? (() => store.ready());
   const app = express();
   app.disable('x-powered-by');
   app.use(requestId);
@@ -45,7 +47,7 @@ export function createApp({
 
   app.get('/health/ready', async (_request, response, next) => {
     try {
-      const ready = await readiness();
+      const ready = await readinessCheck();
       response.status(ready ? 200 : 503).json({ data: { status: ready ? 'ready' : 'not_ready' } });
     } catch (error) {
       next(error);

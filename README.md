@@ -6,6 +6,8 @@ Standalone Node.js, Express, and TypeScript API for ExpenseIQ.
 
 See [HOW_TO_RUN.md](HOW_TO_RUN.md).
 
+For persistent hosting, see [DEPLOYMENT.md](DEPLOYMENT.md).
+
 ```powershell
 Copy-Item .env.example .env
 pnpm.cmd install

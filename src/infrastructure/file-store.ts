@@ -1,7 +1,8 @@
 import { mkdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { randomUUID } from 'node:crypto';
 import { extname, resolve, sep } from 'node:path';
-export class LocalFileStore {
+import type { FileStore } from './store.js';
+export class LocalFileStore implements FileStore {
   private readonly root: string;
   constructor(root: string) {
     this.root = resolve(root);

@@ -6,7 +6,8 @@ const envSchema = z
   .object({
     NODE_ENV: z.enum(['development', 'test', 'production']).default('development'),
     PORT: z.coerce.number().int().min(1).max(65535).default(4000),
-    DATABASE_URL: z.string().min(1).default('file:./dev.db'),
+    STORAGE_DRIVER: z.enum(['local', 'supabase']).default('local'),
+    DATABASE_URL: z.string().min(1).optional(),
     DATA_FILE: z.string().min(1).default('./storage/data.json'),
     JWT_SECRET: z.string().min(32).default(placeholderSecret),
     JWT_EXPIRES_IN: z.string().min(1).default('15m'),
@@ -15,6 +16,9 @@ const envSchema = z
       .enum(['fatal', 'error', 'warn', 'info', 'debug', 'trace', 'silent'])
       .default('info'),
     STATEMENT_STORAGE_DIR: z.string().min(1).default('./storage/statements'),
+    SUPABASE_URL: z.string().url().optional(),
+    SUPABASE_SERVICE_ROLE_KEY: z.string().min(20).optional(),
+    SUPABASE_STORAGE_BUCKET: z.string().min(1).default('expenseiq-statements'),
     MAX_UPLOAD_FILES: z.coerce.number().int().min(1).max(100).default(10),
     MAX_UPLOAD_FILE_BYTES: z.coerce
       .number()
@@ -41,6 +45,23 @@ const envSchema = z
         code: 'custom',
         path: ['JWT_SECRET'],
         message: 'placeholder is forbidden in production',
+      });
+    }
+    if (value.NODE_ENV === 'production' && !value.DATABASE_URL) {
+      context.addIssue({
+        code: 'custom',
+        path: ['DATABASE_URL'],
+        message: 'required in production',
+      });
+    }
+    if (
+      value.STORAGE_DRIVER === 'supabase' &&
+      (!value.SUPABASE_URL || !value.SUPABASE_SERVICE_ROLE_KEY)
+    ) {
+      context.addIssue({
+        code: 'custom',
+        path: ['SUPABASE_URL'],
+        message: 'Supabase URL and service-role key are required',
       });
     }
   });

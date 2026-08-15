@@ -7,8 +7,7 @@ import multer from 'multer';
 import { z } from 'zod';
 import type { AppConfig } from './config/env.js';
 import type { StatementRecord } from './domain/types.js';
-import type { LocalFileStore } from './infrastructure/file-store.js';
-import type { JsonStore } from './infrastructure/json-store.js';
+import type { DataStore, FileStore } from './infrastructure/store.js';
 import { authenticate } from './middleware/authenticate.js';
 import { AppError } from './shared/errors.js';
 
@@ -75,8 +74,8 @@ function parse<T>(schema: z.ZodType<T>, input: unknown): T {
 
 export interface RouteDependencies {
   config: AppConfig;
-  store: JsonStore;
-  files: LocalFileStore;
+  store: DataStore;
+  files: FileStore;
 }
 export function createRoutes({ config, store, files }: RouteDependencies): Router {
   const router = Router();

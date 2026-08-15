@@ -1,6 +1,7 @@
 import { mkdir, readFile, rename, writeFile } from 'node:fs/promises';
 import { dirname, resolve } from 'node:path';
 import type { DatabaseState } from '../domain/types.js';
+import type { DataStore } from './store.js';
 const codes = [
   'FOOD',
   'TRANSPORT',
@@ -27,7 +28,7 @@ const emptyState = (): DatabaseState => ({
     displayOrder,
   })),
 });
-export class JsonStore {
+export class JsonStore implements DataStore {
   private state: DatabaseState = emptyState();
   private queue: Promise<void> = Promise.resolve();
   constructor(private readonly path: string) {}
@@ -61,4 +62,8 @@ export class JsonStore {
     await writeFile(temporary, JSON.stringify(this.state, null, 2), 'utf8');
     await rename(temporary, absolute);
   }
+  ready(): Promise<boolean> {
+    return Promise.resolve(true);
+  }
+  async close(): Promise<void> {}
 }
