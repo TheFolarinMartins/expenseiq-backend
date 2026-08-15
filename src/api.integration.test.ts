@@ -10,6 +10,7 @@ import { JsonStore } from './infrastructure/json-store.js';
 import { createLogger } from './infrastructure/logger.js';
 
 let app: ReturnType<typeof createApp>;
+let store: JsonStore;
 beforeEach(async () => {
   const dir = await mkdtemp(join(tmpdir(), 'expenseiq-api-'));
   const config = loadConfig({
@@ -17,7 +18,7 @@ beforeEach(async () => {
     LOG_LEVEL: 'silent',
     JWT_SECRET: 'test-secret-with-at-least-thirty-two-chars',
   });
-  const store = new JsonStore(join(dir, 'data.json'));
+  store = new JsonStore(join(dir, 'data.json'));
   const files = new LocalFileStore(join(dir, 'files'));
   await Promise.all([store.initialize(), files.initialize()]);
   app = createApp({ config, logger: createLogger(config), store, files });
@@ -142,5 +143,101 @@ describe('ExpenseIQ API', () => {
       netCashFlowMinor: 0,
       transactionCount: 0,
     });
+  });
+  it('aggregates dashboard totals by day, category and bank', async () => {
+    const token = await register('analytics@example.com');
+    const me = await request(app).get('/api/auth/me').set('authorization', `Bearer ${token}`);
+    const userId = me.body.data.id as string;
+    const base = {
+      statementId: 'statement-1',
+      userId,
+      balanceMinor: null,
+      confidenceScore: 100,
+      reviewStatus: 'OK' as const,
+      isUserCorrected: false,
+      rawDescription: 'seed',
+      rawAmount: '0',
+      rawDate: null,
+      createdAt: '2026-08-01T00:00:00.000Z',
+      updatedAt: '2026-08-01T00:00:00.000Z',
+    };
+    await store.write((state) => {
+      state.transactions.push(
+        {
+          ...base,
+          id: 'income-1',
+          bankCode: 'GTBANK',
+          date: '2026-08-01',
+          description: 'Salary',
+          amountMinor: 100_000,
+          type: 'INCOME',
+          categoryId: 'INCOME',
+        },
+        {
+          ...base,
+          id: 'expense-1',
+          bankCode: 'GTBANK',
+          date: '2026-08-01',
+          description: 'Groceries',
+          amountMinor: 25_000,
+          type: 'EXPENSE',
+          categoryId: 'FOOD',
+        },
+        {
+          ...base,
+          id: 'expense-2',
+          bankCode: 'ACCESS',
+          date: '2026-08-02',
+          description: 'Taxi',
+          amountMinor: 10_000,
+          type: 'EXPENSE',
+          categoryId: 'TRANSPORT',
+        },
+      );
+    });
+
+    const dashboard = await request(app)
+      .get('/api/dashboard')
+      .set('authorization', `Bearer ${token}`);
+    expect(dashboard.body.data).toMatchObject({
+      totalIncomeMinor: 100_000,
+      totalExpensesMinor: 35_000,
+      netCashFlowMinor: 65_000,
+      transactionCount: 3,
+      spendingTrend: [
+        {
+          date: '2026-08-01',
+          incomeMinor: 100_000,
+          expensesMinor: 25_000,
+          netCashFlowMinor: 75_000,
+        },
+        {
+          date: '2026-08-02',
+          incomeMinor: 0,
+          expensesMinor: 10_000,
+          netCashFlowMinor: -10_000,
+        },
+      ],
+      spendingByBank: [
+        {
+          bankCode: 'GTBANK',
+          incomeMinor: 100_000,
+          expensesMinor: 25_000,
+          netCashFlowMinor: 75_000,
+          transactionCount: 2,
+        },
+        {
+          bankCode: 'ACCESS',
+          incomeMinor: 0,
+          expensesMinor: 10_000,
+          netCashFlowMinor: -10_000,
+          transactionCount: 1,
+        },
+      ],
+    });
+    expect(dashboard.body.data.spendingByCategory).toEqual([
+      { categoryId: 'FOOD', amountMinor: 25_000 },
+      { categoryId: 'TRANSPORT', amountMinor: 10_000 },
+    ]);
   });
 });

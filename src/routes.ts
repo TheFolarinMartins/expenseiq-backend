@@ -536,6 +536,35 @@ export function createRoutes({ config, store, files }: RouteDependencies): Route
     const categoryMap = new Map<string, number>();
     for (const item of items.filter((x) => x.type === 'EXPENSE'))
       categoryMap.set(item.categoryId, (categoryMap.get(item.categoryId) ?? 0) + item.amountMinor);
+    const trendMap = new Map<
+      string,
+      { date: string; incomeMinor: number; expensesMinor: number }
+    >();
+    const bankMap = new Map<
+      string,
+      { bankCode: string; incomeMinor: number; expensesMinor: number; transactionCount: number }
+    >();
+    for (const item of items) {
+      const day = trendMap.get(item.date) ?? {
+        date: item.date,
+        incomeMinor: 0,
+        expensesMinor: 0,
+      };
+      if (item.type === 'INCOME') day.incomeMinor += item.amountMinor;
+      else day.expensesMinor += item.amountMinor;
+      trendMap.set(item.date, day);
+
+      const bank = bankMap.get(item.bankCode) ?? {
+        bankCode: item.bankCode,
+        incomeMinor: 0,
+        expensesMinor: 0,
+        transactionCount: 0,
+      };
+      if (item.type === 'INCOME') bank.incomeMinor += item.amountMinor;
+      else bank.expensesMinor += item.amountMinor;
+      bank.transactionCount += 1;
+      bankMap.set(item.bankCode, bank);
+    }
     response.json({
       data: {
         currency: 'NGN',
@@ -543,13 +572,22 @@ export function createRoutes({ config, store, files }: RouteDependencies): Route
         totalExpensesMinor: expenses,
         netCashFlowMinor: income - expenses,
         transactionCount: items.length,
-        spendingByCategory: [...categoryMap].map(([categoryId, amountMinor]) => ({
-          categoryId,
-          amountMinor,
-        })),
-        spendingTrend: [],
-        spendingByBank: [],
-        recentTransactions: items.sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5),
+        spendingByCategory: [...categoryMap]
+          .map(([categoryId, amountMinor]) => ({ categoryId, amountMinor }))
+          .sort((a, b) => b.amountMinor - a.amountMinor),
+        spendingTrend: [...trendMap.values()]
+          .sort((a, b) => a.date.localeCompare(b.date))
+          .map((day) => ({
+            ...day,
+            netCashFlowMinor: day.incomeMinor - day.expensesMinor,
+          })),
+        spendingByBank: [...bankMap.values()]
+          .map((bank) => ({
+            ...bank,
+            netCashFlowMinor: bank.incomeMinor - bank.expensesMinor,
+          }))
+          .sort((a, b) => b.expensesMinor - a.expensesMinor),
+        recentTransactions: [...items].sort((a, b) => b.date.localeCompare(a.date)).slice(0, 5),
       },
     });
   });

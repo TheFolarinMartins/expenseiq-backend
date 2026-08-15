@@ -126,8 +126,19 @@ export interface Dashboard {
   netCashFlowMinor: number;
   transactionCount: number;
   spendingByCategory: Array<{ categoryId: string; amountMinor: number }>;
-  spendingTrend: unknown[];
-  spendingByBank: unknown[];
+  spendingTrend: Array<{
+    date: string;
+    incomeMinor: number;
+    expensesMinor: number;
+    netCashFlowMinor: number;
+  }>;
+  spendingByBank: Array<{
+    bankCode: BankCode;
+    incomeMinor: number;
+    expensesMinor: number;
+    netCashFlowMinor: number;
+    transactionCount: number;
+  }>;
   recentTransactions: Transaction[];
 }
 ```
@@ -440,7 +451,7 @@ export async function getDashboard(bank?: BankCode): Promise<Dashboard> {
 }
 ```
 
-Load categories once after authentication and cache them in application state. Dashboard arrays such as trends and bank breakdowns are currently valid but may be empty until transaction extraction and richer aggregation are implemented; empty-state UI is required.
+Load categories once after authentication and cache them in application state. `spendingTrend` is ordered by date ascending, `spendingByBank` is ordered by expenses descending, and `spendingByCategory` is ordered by amount descending. These arrays are empty when the user has no transactions, so empty-state UI is still required.
 
 ## 9. Complete endpoint checklist
 
@@ -558,6 +569,6 @@ Invalidate statements after upload, reprocess, or delete. Invalidate transaction
 - Refresh tokens are opaque, rotate after every use, and expire after 30 days by default. The frontend must prevent concurrent refresh calls from reusing one token.
 - Logout revokes the current refresh token; an issued access JWT remains valid until its short expiry.
 - Uploaded PDFs are validated, deduplicated, stored, and assigned a bank. Reliable bank-specific transaction extraction still requires anonymized text-PDF fixtures and parser implementation.
-- Dashboard trend and bank aggregation arrays may currently be empty.
+- Dashboard aggregation arrays are empty until the user has stored transactions.
 
 These limitations should be reflected honestly in the UI rather than simulated with fabricated transactions.

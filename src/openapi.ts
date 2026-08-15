@@ -93,6 +93,58 @@ export const openApiDocument = {
           reviewStatus: { type: 'string' },
         },
       },
+      Dashboard: {
+        type: 'object',
+        properties: {
+          currency: { type: 'string', enum: ['NGN'] },
+          totalIncomeMinor: { type: 'integer' },
+          totalExpensesMinor: { type: 'integer' },
+          netCashFlowMinor: { type: 'integer' },
+          transactionCount: { type: 'integer' },
+          spendingByCategory: {
+            type: 'array',
+            items: {
+              type: 'object',
+              properties: {
+                categoryId: { type: 'string' },
+                amountMinor: { type: 'integer' },
+              },
+            },
+          },
+          spendingTrend: {
+            type: 'array',
+            description: 'Daily totals ordered by date ascending',
+            items: {
+              type: 'object',
+              properties: {
+                date: { type: 'string', format: 'date' },
+                incomeMinor: { type: 'integer' },
+                expensesMinor: { type: 'integer' },
+                netCashFlowMinor: { type: 'integer' },
+              },
+            },
+          },
+          spendingByBank: {
+            type: 'array',
+            description: 'Bank totals ordered by expenses descending',
+            items: {
+              type: 'object',
+              properties: {
+                bankCode: { type: 'string' },
+                incomeMinor: { type: 'integer' },
+                expensesMinor: { type: 'integer' },
+                netCashFlowMinor: { type: 'integer' },
+                transactionCount: { type: 'integer' },
+              },
+            },
+          },
+          recentTransactions: {
+            type: 'array',
+            maxItems: 5,
+            items: { $ref: '#/components/schemas/Transaction' },
+          },
+        },
+      },
     },
   },
   paths: {
@@ -370,7 +422,19 @@ export const openApiDocument = {
         summary: 'Get owned dashboard analytics',
         security: [{ bearerAuth: [] }],
         parameters: [{ name: 'bank', in: 'query', schema: { type: 'string' } }],
-        responses: { '200': { description: 'Dashboard summary' } },
+        responses: {
+          '200': {
+            description: 'Dashboard summary',
+            content: {
+              'application/json': {
+                schema: {
+                  type: 'object',
+                  properties: { data: { $ref: '#/components/schemas/Dashboard' } },
+                },
+              },
+            },
+          },
+        },
       },
     },
   },
