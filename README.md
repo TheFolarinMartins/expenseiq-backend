@@ -10,6 +10,8 @@ For persistent hosting, see [DEPLOYMENT.md](DEPLOYMENT.md).
 
 Frontend developers should follow [FRONTEND_INTEGRATION.md](FRONTEND_INTEGRATION.md).
 
+For the screen architecture, diagrams, and TanStack Query implementation, see [TANSTACK_QUERY_FRONTEND_GUIDE.md](TANSTACK_QUERY_FRONTEND_GUIDE.md).
+
 ```powershell
 Copy-Item .env.example .env
 pnpm.cmd install
