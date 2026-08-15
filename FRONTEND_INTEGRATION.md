@@ -165,15 +165,13 @@ const API_URL = import.meta.env.VITE_API_URL as string;
 const TOKEN_KEY = 'expenseiq_access_token';
 const REFRESH_TOKEN_KEY = 'expenseiq_refresh_token';
 
-export class ApiError extends Error {
-  constructor(
-    public status: number,
-    public code: string,
-    message: string,
-    public fieldErrors?: Record<string, string[]>,
-  ) {
-    super(message);
-  }
+function apiProblem(
+  status: number,
+  code: string,
+  message: string,
+  fieldErrors?: Record<string, string[]>,
+) {
+  return { status, code, message, fieldErrors };
 }
 
 export const tokenStore = {
@@ -204,7 +202,7 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
   try {
     response = await fetch(`${API_URL}${path}`, { ...options, headers });
   } catch {
-    throw new ApiError(0, 'NETWORK_ERROR', 'Unable to reach the ExpenseIQ server.');
+    throw apiProblem(0, 'NETWORK_ERROR', 'Unable to reach the ExpenseIQ server.');
   }
 
   if (response.status === 204) return undefined as T;
@@ -212,7 +210,7 @@ export async function apiRequest<T>(path: string, options: RequestInit = {}): Pr
   const payload = await response.json().catch(() => null);
   if (!response.ok) {
     const body = payload as ApiErrorBody | null;
-    throw new ApiError(
+    throw apiProblem(
       response.status,
       body?.error.code ?? 'HTTP_ERROR',
       body?.error.message ?? 'The request failed.',
@@ -274,7 +272,7 @@ export async function getCurrentUser(): Promise<User> {
 
 export async function refreshSession(): Promise<User> {
   const refreshToken = tokenStore.getRefresh();
-  if (!refreshToken) throw new Error('No refresh token is available.');
+  if (!refreshToken) throw apiProblem(401, 'NO_REFRESH_TOKEN', 'No refresh token is available.');
   const result = await apiRequest<AuthResponse>('/api/auth/refresh', {
     method: 'POST',
     body: JSON.stringify({ refreshToken }),
@@ -538,7 +536,7 @@ Invalidate statements after upload, reprocess, or delete. Invalidate transaction
 ## 12. Recommended implementation order
 
 1. Configure the environment URL and confirm `/health/ready`.
-2. Add shared types, `apiRequest`, `ApiError`, and the token store.
+2. Add shared types, `apiRequest`, the plain `apiProblem` helper, and the token store.
 3. Build register, login, auth restoration, protected routing, and logout.
 4. Build PDF selection, client-side limits, upload progress state, and per-file results.
 5. Build statement history, details, manual bank selection, and deletion confirmation.

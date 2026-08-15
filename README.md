@@ -12,7 +12,9 @@ Frontend developers should follow [FRONTEND_INTEGRATION.md](FRONTEND_INTEGRATION
 
 For the screen architecture, diagrams, and TanStack Query implementation, see [TANSTACK_QUERY_FRONTEND_GUIDE.md](TANSTACK_QUERY_FRONTEND_GUIDE.md).
 
-Download the illustrated, print-ready version: [ExpenseIQ TanStack Query Frontend Guide (PDF)](docs/ExpenseIQ_TanStack_Query_Frontend_Guide.pdf).
+For a simpler no-classes introduction, start with [BEGINNER_FRONTEND_GUIDE.md](BEGINNER_FRONTEND_GUIDE.md).
+
+Download the beginner-friendly illustrated version: [ExpenseIQ Beginner Frontend Guide (PDF)](docs/ExpenseIQ_Beginner_Frontend_Guide.pdf).
 
 ```powershell
 Copy-Item .env.example .env

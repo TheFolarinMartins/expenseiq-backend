@@ -214,15 +214,13 @@ const API_URL = import.meta.env.VITE_API_URL as string;
 const ACCESS_KEY = 'expenseiq_access_token';
 const REFRESH_KEY = 'expenseiq_refresh_token';
 
-export class ApiError extends Error {
-  constructor(
-    public status: number,
-    public code: string,
-    message: string,
-    public fieldErrors?: Record<string, string[]>,
-  ) {
-    super(message);
-  }
+function apiProblem(
+  status: number,
+  code: string,
+  message: string,
+  fieldErrors?: Record<string, string[]>,
+) {
+  return { status, code, message, fieldErrors };
 }
 
 export const tokens = {
@@ -246,13 +244,13 @@ let refreshInFlight: Promise<void> | null = null;
 
 async function rotateTokens(): Promise<void> {
   const refreshToken = tokens.refresh();
-  if (!refreshToken) throw new Error('No refresh token');
+  if (!refreshToken) throw apiProblem(401, 'NO_REFRESH_TOKEN', 'No refresh token is available.');
   const response = await fetch(`${API_URL}/api/auth/refresh`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'application/json' },
     body: JSON.stringify({ refreshToken }),
   });
-  if (!response.ok) throw new Error('Refresh rejected');
+  if (!response.ok) throw apiProblem(401, 'REFRESH_REJECTED', 'Refresh was rejected.');
   const payload = (await response.json()) as AuthPayload;
   tokens.set(payload.data.token, payload.data.refreshToken);
 }
@@ -276,7 +274,7 @@ export async function apiRequest<T>(
   try {
     response = await send(path, init);
   } catch {
-    throw new ApiError(0, 'NETWORK_ERROR', 'Unable to reach the ExpenseIQ server.');
+    throw apiProblem(0, 'NETWORK_ERROR', 'Unable to reach the ExpenseIQ server.');
   }
 
   if (response.status === 401 && allowRefresh && path !== '/api/auth/refresh' && tokens.refresh()) {
@@ -288,7 +286,7 @@ export async function apiRequest<T>(
       response = await send(path, init);
     } catch {
       tokens.clear();
-      throw new ApiError(401, 'SESSION_EXPIRED', 'Your session has expired.');
+      throw apiProblem(401, 'SESSION_EXPIRED', 'Your session has expired.');
     }
   }
 
@@ -297,7 +295,7 @@ export async function apiRequest<T>(
   if (!response.ok) {
     const error = payload?.error;
     if (response.status === 401) tokens.clear();
-    throw new ApiError(
+    throw apiProblem(
       response.status,
       error?.code ?? 'HTTP_ERROR',
       error?.message ?? 'The request failed.',
