@@ -58,7 +58,7 @@ VITE_API_URL=http://localhost:4000
 When the backend is deployed, change it to the Render address:
 
 ```env
-VITE_API_URL=https://YOUR-BACKEND.onrender.com
+VITE_API_URL=https://expenseiq-backend-iglc.onrender.com
 ```
 
 Restart the frontend after changing `.env`.

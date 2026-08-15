@@ -14,7 +14,7 @@ VITE_API_URL=http://localhost:4000
 NEXT_PUBLIC_API_URL=http://localhost:4000
 ```
 
-For production, replace the value with the Render URL and set backend `CORS_ORIGIN` to the exact frontend origin. Do not add a trailing `/`.
+For production, use `https://expenseiq-backend-iglc.onrender.com` and set backend `CORS_ORIGIN` to the exact frontend origin. Do not add a trailing `/`.
 
 Useful backend pages:
 

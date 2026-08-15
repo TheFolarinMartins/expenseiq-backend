@@ -6,7 +6,13 @@ export const openApiDocument = {
     description:
       'Authenticated API for statement uploads, transaction review, and financial analytics.',
   },
-  servers: [{ url: 'http://localhost:4000', description: 'Local development' }],
+  servers: [
+    { url: 'http://localhost:4000', description: 'Local development' },
+    {
+      url: 'https://expenseiq-backend-iglc.onrender.com',
+      description: 'Production on Render',
+    },
+  ],
   tags: [
     { name: 'Health' },
     { name: 'Authentication' },

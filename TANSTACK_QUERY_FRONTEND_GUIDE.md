@@ -109,7 +109,7 @@ pnpm add react-hook-form zod @hookform/resolvers recharts
 VITE_API_URL=http://localhost:4000
 ```
 
-Production uses the Render origin, without a trailing slash. The backend `CORS_ORIGIN` must equal the frontend origin.
+Production uses `https://expenseiq-backend-iglc.onrender.com`, without a trailing slash. The backend `CORS_ORIGIN` must equal the frontend origin.
 
 ## 5. Query client
 
