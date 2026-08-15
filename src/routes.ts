@@ -1,4 +1,5 @@
 import { createHash, randomBytes, randomUUID } from 'node:crypto';
+import { extname } from 'node:path';
 import { compare, hash } from 'bcryptjs';
 import { Router } from 'express';
 import type { NextFunction, Request, RequestHandler, Response } from 'express';
@@ -10,6 +11,64 @@ import type { RefreshTokenRecord, StatementRecord, UserRecord } from './domain/t
 import type { DataStore, FileStore } from './infrastructure/store.js';
 import { authenticate } from './middleware/authenticate.js';
 import { AppError } from './shared/errors.js';
+
+const SUPPORTED_UPLOADS: Record<
+  string,
+  { mimeType: string; signature: (bytes: Buffer) => boolean }
+> = {
+  '.pdf': {
+    mimeType: 'application/pdf',
+    signature: (bytes) => bytes.subarray(0, 5).toString() === '%PDF-',
+  },
+  '.png': {
+    mimeType: 'image/png',
+    signature: (bytes) =>
+      bytes.subarray(0, 8).equals(Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a])),
+  },
+  '.jpg': {
+    mimeType: 'image/jpeg',
+    signature: (bytes) => bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff,
+  },
+  '.jpeg': {
+    mimeType: 'image/jpeg',
+    signature: (bytes) => bytes[0] === 0xff && bytes[1] === 0xd8 && bytes[2] === 0xff,
+  },
+  '.gif': {
+    mimeType: 'image/gif',
+    signature: (bytes) => ['GIF87a', 'GIF89a'].includes(bytes.subarray(0, 6).toString()),
+  },
+  '.webp': {
+    mimeType: 'image/webp',
+    signature: (bytes) =>
+      bytes.subarray(0, 4).toString() === 'RIFF' && bytes.subarray(8, 12).toString() === 'WEBP',
+  },
+  '.tif': {
+    mimeType: 'image/tiff',
+    signature: (bytes) => ['49492a00', '4d4d002a'].includes(bytes.subarray(0, 4).toString('hex')),
+  },
+  '.tiff': {
+    mimeType: 'image/tiff',
+    signature: (bytes) => ['49492a00', '4d4d002a'].includes(bytes.subarray(0, 4).toString('hex')),
+  },
+  '.heic': {
+    mimeType: 'image/heic',
+    signature: (bytes) =>
+      bytes.subarray(4, 8).toString() === 'ftyp' &&
+      bytes.subarray(8, 12).toString().startsWith('hei'),
+  },
+  '.xls': {
+    mimeType: 'application/vnd.ms-excel',
+    signature: (bytes) => bytes.subarray(0, 8).toString('hex') === 'd0cf11e0a1b11ae1',
+  },
+  '.xlsx': {
+    mimeType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+    signature: (bytes) => bytes.subarray(0, 4).toString('hex') === '504b0304',
+  },
+  '.csv': {
+    mimeType: 'text/csv',
+    signature: (bytes) => bytes.length > 0 && !bytes.subarray(0, 1024).includes(0),
+  },
+};
 
 const asyncRoute =
   (handler: (request: Request, response: Response) => Promise<void>): RequestHandler =>
@@ -253,32 +312,37 @@ export function createRoutes({ config, store, files }: RouteDependencies): Route
     asyncRoute(async (request, response) => {
       const userId = ownedUserId(request);
       const inputs = request.files as Express.Multer.File[] | undefined;
-      if (!inputs?.length) throw new AppError(400, 'VALIDATION_ERROR', 'Select at least one PDF.');
+      if (!inputs?.length) throw new AppError(400, 'VALIDATION_ERROR', 'Select at least one file.');
       const items: Array<Record<string, unknown> & { status: string }> = [];
       for (const file of inputs) {
         const base = { fileName: file.originalname };
-        if (
-          file.mimetype !== 'application/pdf' ||
-          !file.originalname.toLowerCase().endsWith('.pdf')
-        ) {
+        const extension = extname(file.originalname).toLowerCase();
+        const supported = SUPPORTED_UPLOADS[extension];
+        if (!supported) {
           items.push({
             ...base,
             statementId: null,
             status: 'FAILED',
             bankCode: null,
             transactionCount: 0,
-            error: { code: 'UNSUPPORTED_FILE_TYPE', message: 'Only PDF files are supported.' },
+            error: {
+              code: 'UNSUPPORTED_FILE_TYPE',
+              message: 'Use a PDF, image, Excel, or CSV file.',
+            },
           });
           continue;
         }
-        if (file.buffer.subarray(0, 5).toString() !== '%PDF-') {
+        if (!supported.signature(file.buffer)) {
           items.push({
             ...base,
             statementId: null,
             status: 'FAILED',
             bankCode: null,
             transactionCount: 0,
-            error: { code: 'INVALID_PDF', message: 'The file is not a valid PDF.' },
+            error: {
+              code: 'UNSUPPORTED_FILE_TYPE',
+              message: `The contents do not match a valid ${extension.slice(1).toUpperCase()} file.`,
+            },
           });
           continue;
         }
@@ -297,7 +361,7 @@ export function createRoutes({ config, store, files }: RouteDependencies): Route
           });
           continue;
         }
-        const storageKey = await files.put(file.buffer);
+        const storageKey = await files.put(file.buffer, extension, supported.mimeType);
         const text = file.buffer.toString('latin1');
         const bankCode = detectBank(text);
         const now = new Date().toISOString();
@@ -306,7 +370,7 @@ export function createRoutes({ config, store, files }: RouteDependencies): Route
           userId,
           fileName: file.originalname.replace(/[\r\n]/g, ''),
           fileHash,
-          mimeType: file.mimetype,
+          mimeType: supported.mimeType,
           sizeBytes: file.size,
           storageKey,
           bankCode,

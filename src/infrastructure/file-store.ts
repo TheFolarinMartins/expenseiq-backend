@@ -10,8 +10,9 @@ export class LocalFileStore implements FileStore {
   async initialize(): Promise<void> {
     await mkdir(this.root, { recursive: true });
   }
-  async put(bytes: Buffer): Promise<string> {
-    const key = `${randomUUID()}.pdf`;
+  async put(bytes: Buffer, extension = '.bin'): Promise<string> {
+    const safeExtension = /^\.[a-z0-9]{1,5}$/.test(extension) ? extension : '.bin';
+    const key = `${randomUUID()}${safeExtension}`;
     await writeFile(this.safe(key), bytes, { flag: 'wx' });
     return key;
   }
@@ -22,7 +23,12 @@ export class LocalFileStore implements FileStore {
     await rm(this.safe(key), { force: true });
   }
   private safe(key: string): string {
-    if (extname(key) !== '.pdf' || key.includes('/') || key.includes('\\'))
+    if (
+      !/^[-a-f0-9]+\.[a-z0-9]{1,5}$/.test(key) ||
+      !extname(key) ||
+      key.includes('/') ||
+      key.includes('\\')
+    )
       throw new Error('Invalid storage key');
     const target = resolve(this.root, key);
     if (!target.startsWith(`${this.root}${sep}`)) throw new Error('Unsafe storage path');

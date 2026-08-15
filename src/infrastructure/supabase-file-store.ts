@@ -23,10 +23,15 @@ export class SupabaseFileStore implements FileStore {
     }
   }
 
-  async put(bytes: Buffer): Promise<string> {
-    const key = `${randomUUID()}.pdf`;
+  async put(
+    bytes: Buffer,
+    extension = '.bin',
+    mimeType = 'application/octet-stream',
+  ): Promise<string> {
+    const safeExtension = /^\.[a-z0-9]{1,5}$/.test(extension) ? extension : '.bin';
+    const key = `${randomUUID()}${safeExtension}`;
     const { error } = await this.client.storage.from(this.bucket).upload(key, bytes, {
-      contentType: 'application/pdf',
+      contentType: mimeType,
       upsert: false,
     });
     if (error) throw error;

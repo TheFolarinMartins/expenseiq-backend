@@ -98,6 +98,30 @@ describe('ExpenseIQ API', () => {
       .attach('files', pdf, { filename: 'good.pdf', contentType: 'application/pdf' });
     expect(duplicate.body.data.summary.duplicate).toBe(1);
   });
+  it('accepts image, Excel and CSV statements for the bank-selection flow', async () => {
+    const token = await register();
+    const png = Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      Buffer.from('statement image'),
+    ]);
+    const xlsx = Buffer.concat([Buffer.from([0x50, 0x4b, 0x03, 0x04]), Buffer.from('sheet')]);
+    const result = await request(app)
+      .post('/api/statements/upload')
+      .set('authorization', `Bearer ${token}`)
+      .attach('files', png, { filename: 'statement.png', contentType: 'image/png' })
+      .attach('files', xlsx, {
+        filename: 'statement.xlsx',
+        contentType: 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet',
+      })
+      .attach('files', Buffer.from('date,description,amount\n2026-08-15,Lunch,2500'), {
+        filename: 'statement.csv',
+        contentType: 'text/csv',
+      });
+    expect(result.status).toBe(207);
+    expect(result.body.data.summary).toMatchObject({ total: 3, needsBank: 3, failed: 0 });
+    const items = result.body.data.items as Array<{ statementId: string | null }>;
+    expect(items.every((item) => Boolean(item.statementId))).toBe(true);
+  });
   it('lists, reprocesses and deletes only owned statements', async () => {
     const token = await register();
     const upload = await request(app)

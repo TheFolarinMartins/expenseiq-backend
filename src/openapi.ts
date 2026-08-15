@@ -289,7 +289,7 @@ export const openApiDocument = {
     '/api/statements/upload': {
       post: {
         tags: ['Statements'],
-        summary: 'Upload multiple PDF statements',
+        summary: 'Upload multiple PDF, image, Excel, or CSV statements',
         security: [{ bearerAuth: [] }],
         requestBody: {
           required: true,
